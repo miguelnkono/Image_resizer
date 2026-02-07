@@ -1,59 +1,125 @@
-from PIL import Image
-import argparse
+import math
 import os
 import sys
+import argparse
+from pathlib import Path
+from PIL import Image
 
 
 def img_resizer(path: str) -> Image.Image:
+    """
+    Resize an image based on its aspect ratio.
 
-    image = Image.open(path)
-    width, height = image.size
+    Args:
+        path: Path to the image file
 
-    new_width = 300
-    new_height = int(height * (new_width / width))
+    Returns:
+        Resized PIL Image object
+    """
+    try:
+        image = Image.open(path)
+        width, height = image.size
 
-    resized_image = image.resize((new_width, new_height), Image.LANCZOS)
+        new_width = 300
+        new_height = int(height * (new_width / width))
 
-    return resized_image
+        # Use LANCZOS for high-quality downsampling
+        resized_image = image.resize((new_width, new_height), Image.LANCZOS)
+        return resized_image
+    except Exception as e:
+        print(f"❌ Error processing {path}: {e}")
+        return None
 
 
-if __name__ == "__main__":
-
+def main():
     parser = argparse.ArgumentParser(
-        description="small utility to help resize images in a specific folder",
+        description="Small utility to help resize images in a specific folder",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
-        "--folder", "-f", help="specify the folder containing the images to resize"
+        "--folder",
+        "-f",
+        required=True,
+        help="Specify the folder containing the images to resize",
     )
     parser.add_argument(
-        "--resized_imgs", "-r", help="specify the folder to store the resized images"
+        "--resized_imgs",
+        "-r",
+        required=True,
+        help="Specify the folder to store the resized images",
     )
+
     args = parser.parse_args()
 
-    if not args.folder and not args.resized_imgs:
-        print("❌ Error: Folder containing the images is required!")
-        print("❌ Error: Folder to store the resized images is required!")
-        print("   Use --folder /path/to/images or --interactive mode")
-        print("   Use --name base_name or --interactive mode")
-        sys.exit(-1)
+    # Validate input folder
+    img_dir = Path(args.folder)
+    if not img_dir.exists():
+        print(f"❌ Error: Input folder '{args.folder}' does not exist!")
+        sys.exit(1)
 
-    # img_dir = os.path.join(os.path.abspath(os.path.curdir), "imgs")
-    img_dir = args.folder
-    image_paths = [os.path.join(img_dir, img) for img in os.listdir(img_dir)]
+    if not img_dir.is_dir():
+        print(f"❌ Error: '{args.folder}' is not a directory!")
+        sys.exit(1)
 
-    # resized_path = os.path.join(img_dir, "resized_imgs")
-    resized_path = args.resized_imgs
-    if os.path.exists(resized_path) == False:
-        os.mkdir(resized_path)
+    # Create output folder if it doesn't exist
+    resized_path = Path(args.resized_imgs)
+    resized_path.mkdir(parents=True, exist_ok=True)
 
-    for path in image_paths:
-        if os.path.isdir(path) is not True:
-            resized_image = img_resizer(path=path)
+    # Supported image extensions
+    supported_extensions = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".tiff"}
 
-            img_new_name = (
-                resized_path + "/" + path.split("/")[-1].split(".")[0] + "_resized.png"
-            )
+    # Get all image files
+    image_paths = [
+        f
+        for f in img_dir.iterdir()
+        if f.is_file() and f.suffix.lower() in supported_extensions
+    ]
 
-            if os.path.exists(img_new_name) is not True:
-                resized_image.save(img_new_name)
+    if not image_paths:
+        print(f"⚠️  Warning: No supported image files found in '{args.folder}'")
+        print(f"   Supported formats: {', '.join(supported_extensions)}")
+        sys.exit(0)
+
+    print(f"📁 Found {len(image_paths)} image(s) to process...")
+
+    # Process each image
+    processed = 0
+    skipped = 0
+
+    for img_path in image_paths:
+        # Generate output filename
+        output_name = f"{img_path.stem}_resized{img_path.suffix}"
+        output_path = resized_path / output_name
+
+        # Skip if already exists
+        if output_path.exists():
+            print(f"⏭️  Skipping {img_path.name} (already exists)")
+            skipped += 1
+            continue
+
+        # Resize image
+        print(f"🔄 Processing {img_path.name}...", end=" ")
+        resized_image = img_resizer(str(img_path))
+
+        if resized_image:
+            # Save with original format or PNG
+            try:
+                resized_image.save(output_path)
+                print(f"✅ Saved to {output_name}")
+                processed += 1
+            except Exception as e:
+                print(f"❌ Failed to save: {e}")
+        else:
+            print("❌ Failed")
+
+    # Summary
+    print("\n" + "=" * 50)
+    print(f"✨ Processing complete!")
+    print(f"   Processed: {processed}")
+    print(f"   Skipped: {skipped}")
+    print(f"   Output folder: {resized_path}")
+    print("=" * 50)
+
+
+if __name__ == "__main__":
+    main()
